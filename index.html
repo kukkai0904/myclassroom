@@ -1,0 +1,899 @@
+﻿<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบธุรการชั้นเรียน ป.3 - โรงเรียนมะค่าสามัคคี</title>
+    <!-- ฟอนต์ Prompt (หน้าเว็บ) และ Sarabun (PDF) -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- นำไลบรารี html2pdf มาใช้สำหรับบันทึกไฟล์ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #f4f6f9; }
+        
+        button, a, input, select, label { 
+            touch-action: manipulation; 
+            -webkit-tap-highlight-color: transparent; 
+        }
+        .overflow-auto, .overflow-x-auto, .hide-scrollbar { -webkit-overflow-scrolling: touch; }
+        
+        .tab-active { border-bottom: 3px solid #2563eb; background-color: #f8fafc; }
+        .tab-active span.menu-text { color: #1e3a8a; font-weight: 500; }
+        .tab-inactive { color: #64748b; border-bottom: 3px solid transparent; }
+        @media (hover: hover) { .tab-inactive:hover { background-color: #f8fafc; border-bottom: 3px solid #cbd5e1; } }
+        
+        .logo-container { position: relative; display: inline-block; cursor: pointer; }
+        .logo-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: 0; transition: 0.3s; font-size: 12px; text-align: center; }
+        @media (hover: hover) { .logo-container:hover .logo-overlay { opacity: 1; } }
+        
+        #sidebar { transition: width 0.3s ease, transform 0.3s ease; }
+        .sidebar-collapsed { width: 0 !important; margin: 0 !important; overflow: hidden !important; border: none !important; opacity: 0; padding: 0 !important; }
+        .health-checkbox { width: 1.5rem; height: 1.5rem; cursor: pointer; border-radius: 0.25rem; accent-color: #10b981; }
+        
+        /* สไตล์หน้ากระดาษพรีวิว PDF - ลดความห่างช่องตารางเพื่อดึงผู้ลงนามขึ้นมา */
+        #pdfPreviewContent {
+            font-family: 'Sarabun', sans-serif !important;
+            color: #000 !important;
+        }
+        .print-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        .print-table th, .print-table td { border: 1px solid #000; padding: 1.5px; text-align: center; }
+        #printContainer { position: absolute; top: -9999px; left: -9999px; z-index: -10; width: 100%; }
+    </style>
+</head>
+<body class="text-gray-800 overflow-hidden h-screen flex flex-col">
+
+    <div id="appContainer" class="flex flex-col h-screen w-full">
+        <!-- Header -->
+        <div class="bg-white shadow-sm z-40 shrink-0 relative">
+            <div class="flex flex-col lg:flex-row lg:items-center px-4 md:px-6 py-3 max-w-7xl mx-auto space-y-4 lg:space-y-0 lg:space-x-8">
+                <div class="flex items-center space-x-4">
+                    <button type="button" onclick="toggleSidebar()" class="p-2.5 rounded-lg active:bg-gray-200 lg:hover:bg-gray-100 text-gray-600 border border-gray-200 transition-colors">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    <div class="flex items-center space-x-4">
+                        <div class="logo-container" onclick="document.getElementById('logoUpload').click()">
+                            <img id="schoolLogo" src="https://ui-avatars.com/api/?name=รร&background=bfdbfe&color=1e3a8a&rounded=true" class="w-12 h-12 rounded-full object-cover bg-blue-50 shadow-sm border border-gray-100">
+                            <div class="logo-overlay lg:hidden flex">เปลี่ยนรูป</div>
+                        </div>
+                        <input type="file" id="logoUpload" accept="image/*" class="hidden" onchange="handleLogoUpload(event)">
+                        <div>
+                            <h1 class="text-xl font-bold text-blue-900 leading-tight">โรงเรียนมะค่าสามัคคี</h1>
+                            <span class="inline-block mt-1 bg-blue-50 text-blue-600 px-3 py-0.5 rounded-full text-sm font-medium border border-blue-100">ระบบธุรการชั้น ป.3</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center w-full lg:w-auto mt-4 lg:mt-0">
+                    <div class="relative flex w-full lg:w-80 shadow-sm rounded-lg overflow-hidden border border-gray-200 bg-white">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i class="fas fa-search text-gray-400"></i></div>
+                        <input type="text" id="searchInput" placeholder="ค้นหาชื่อ, รหัส..." class="pl-10 pr-4 py-2 focus:outline-none w-full text-sm" onkeypress="if(event.key === 'Enter') loadData()">
+                        <button type="button" onclick="loadData()" class="bg-blue-50 active:bg-blue-200 lg:hover:bg-blue-100 text-blue-700 px-5 py-2 border-l border-gray-200 text-sm font-medium transition-colors">ค้นหา</button>
+                    </div>
+                </div>
+            </div>
+            <!-- Top Nav -->
+            <div class="border-t border-gray-100 bg-white shadow-sm">
+                <div class="flex max-w-7xl mx-auto overflow-x-auto px-4 hide-scrollbar" id="topNav"></div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 max-w-7xl mx-auto w-full p-2 md:p-4 flex overflow-hidden">
+            <!-- Sidebar -->
+            <div id="sidebar" class="fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white shadow-2xl transform -translate-x-full lg:relative lg:translate-x-0 lg:shadow-none lg:border-r lg:rounded-xl lg:mr-4 flex flex-col">
+                <div class="p-4 flex justify-between items-center border-b lg:hidden bg-blue-50">
+                    <h2 class="font-bold text-blue-900 text-lg">เมนูหลัก</h2>
+                    <button type="button" onclick="toggleSidebar()" class="p-2"><i class="fas fa-times text-gray-600 text-2xl"></i></button>
+                </div>
+                <div class="p-3 flex-1 overflow-y-auto" id="sidebarMenu"></div>
+            </div>
+            <div id="sidebarOverlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden lg:hidden" onclick="toggleSidebar()"></div>
+
+            <!-- Table Container -->
+            <div class="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col min-w-0 overflow-hidden relative z-0">
+                <div class="p-4 border-b flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white">
+                    <div class="flex items-center space-x-3 w-full xl:w-auto">
+                        <span id="contentIcon" class="text-2xl flex-shrink-0"></span>
+                        <h2 id="contentTitle" class="text-lg md:text-xl font-bold text-blue-900 truncate flex-1"></h2>
+                        <input type="date" id="datePicker" class="ml-auto xl:ml-2 border border-gray-300 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:border-blue-500 hidden shadow-sm text-sm" onchange="loadData()">
+                    </div>
+                    <div class="flex items-center flex-wrap gap-2 w-full xl:w-auto justify-end" id="toolbarButtons"></div>
+                </div>
+                <div class="flex-1 overflow-auto bg-gray-50/50 p-1 md:p-0">
+                    <table class="w-full text-left border-collapse min-w-[800px]">
+                        <thead><tr class="bg-blue-100 text-blue-900 border-b-2 border-blue-200 text-sm font-semibold" id="tableHeader"></tr></thead>
+                        <tbody id="studentTableBody" class="divide-y divide-gray-200 text-sm bg-white"></tbody>
+                        <tfoot id="tableFooter" class="bg-blue-50 font-bold text-blue-900 hidden border-t-2 border-blue-200"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div> 
+
+    <!-- Modal เพิ่ม/แก้ไข นักเรียน -->
+    <div id="studentModal" class="fixed inset-0 bg-black bg-opacity-60 hidden items-center justify-center z-50 px-4">
+        <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl transform transition-all">
+            <h3 class="text-xl font-bold mb-5 text-blue-900"><i class="fas fa-user-edit mr-2 text-blue-500"></i>เพิ่ม/แก้ไข นักเรียน</h3>
+            <input type="hidden" id="studentId">
+            <div class="space-y-4">
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">เลขที่</label><input type="number" id="studentNo" inputmode="numeric" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-base"></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">รหัสประจำตัว</label><input type="text" id="studentCode" inputmode="numeric" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-base"></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล</label><input type="text" id="studentName" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-base"></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">เพศ</label>
+                    <select id="studentGender" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-base">
+                        <option value="ชาย">ชาย</option><option value="หญิง">หญิง</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end space-x-3">
+                <button type="button" onclick="closeStudentModal()" class="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg active:bg-gray-100 lg:hover:bg-gray-50 font-medium">ยกเลิก</button>
+                <button type="button" onclick="saveStudent()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg font-medium shadow-sm">บันทึกข้อมูล</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal ตัวอย่าง PDF (โชว์ก่อนโหลด) -->
+    <div id="pdfPreviewModal" class="fixed inset-0 bg-gray-900 bg-opacity-95 hidden flex-col z-[100]">
+        <div class="flex justify-between items-center p-4 bg-gray-800 text-white shadow-md z-10">
+            <h3 class="font-bold text-lg flex items-center"><i class="fas fa-file-pdf text-red-500 mr-2 text-2xl"></i> ตัวอย่างรายงาน PDF</h3>
+            <div class="flex space-x-2 md:space-x-3">
+                <button type="button" onclick="closePdfPreview()" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 active:bg-gray-700 rounded-lg text-sm font-medium transition-colors">ย้อนกลับ</button>
+                <button type="button" onclick="downloadActualPDF()" id="btnDownloadActualPdf" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-lg text-sm font-medium shadow-lg transition-colors"><i class="fas fa-download mr-1.5"></i> บันทึกไฟล์ PDF</button>
+            </div>
+        </div>
+        <!-- พื้นที่โชว์กระดาษ A4 -->
+        <div class="flex-1 overflow-auto p-4 md:p-8 flex justify-center w-full">
+            <div id="pdfPreviewContent" class="bg-white shadow-2xl origin-top mx-auto" style="min-height: 190mm;">
+                <!-- เนื้อหาจะถูกสร้างและนำมาใส่ที่นี่ -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Container สำหรับซ่อน HTML ก่อนแปลง -->
+    <div id="printContainer"></div>
+
+    <script>
+        const svgIcons = {
+            home: '<svg class="w-6 h-6 text-purple-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
+            attendance: '<svg class="w-6 h-6 text-blue-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+            clean: '<svg class="w-6 h-6 text-yellow-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5"></path></svg>',
+            line: '<svg class="w-6 h-6 text-blue-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path></svg>',
+            milk: '<svg class="w-6 h-6 text-teal-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>',
+            lunch: '<svg class="w-6 h-6 text-orange-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>',
+            teeth: '<svg class="w-6 h-6 text-teal-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+            healthCheck: '<svg class="w-6 h-6 text-red-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>',
+            heightWeight: '<svg class="w-6 h-6 text-blue-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"></path></svg>',
+            saving: '<svg class="w-6 h-6 text-green-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
+            settings: '<svg class="w-6 h-6 text-gray-500 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>'
+        };
+
+        const menuStructure = [
+            { id: 'homeMenu', title: 'หน้าหลัก', icon: '<i class="fas fa-home text-blue-500"></i>', subMenus: [ { id: 'home', text1: 'หน้าหลัก/', text2: 'ข้อมูลนักเรียน', title: 'ฐานข้อมูลนักเรียน', icon: svgIcons.home }, { id: 'settings', text1: 'ตั้งค่าระบบ', text2: 'และวันหยุด', title: 'ตั้งค่าระบบ วันหยุด และผู้ลงนาม', icon: svgIcons.settings } ] },
+            { id: 'activityMenu', title: 'มาเรียน/กิจกรรม', icon: '<i class="fas fa-clipboard-check text-green-500"></i>', subMenus: [ { id: 'attendance', text1: 'บันทึก', text2: 'การเข้าเรียน', title: 'บันทึกการเข้าเรียนรายวัน', icon: svgIcons.attendance }, { id: 'clean', text1: 'บันทึก', text2: 'ทำความสะอาด', title: 'บันทึกทำความสะอาด', icon: svgIcons.clean }, { id: 'line', text1: 'บันทึก', text2: 'เข้าเเถว', title: 'บันทึกกิจกรรมหน้าเสาธง', icon: svgIcons.line }, { id: 'milk', text1: 'บันทึก', text2: 'ดื่มนม', title: 'บันทึกการดื่มนมโรงเรียน', icon: svgIcons.milk }, { id: 'lunch', text1: 'บันทึก', text2: 'อาหารกลางวัน', title: 'บันทึกรับประทานอาหารกลางวัน', icon: svgIcons.lunch }, { id: 'teeth', text1: 'บันทึก', text2: 'แปรงฟัน', title: 'บันทึกกิจกรรมแปรงฟัน', icon: svgIcons.teeth } ] },
+            { id: 'healthMenu', title: 'สุขภาพ (รายเดือน)', icon: '<i class="fas fa-heartbeat text-red-500"></i>', subMenus: [ 
+                { id: 'healthCheck', text1: 'ตรวจสุขภาพ', text2: '10 ประการ', title: 'บันทึกการตรวจสุขภาพ (รายเดือน)', icon: svgIcons.healthCheck }, 
+                { id: 'heightWeight', text1: 'น้ำหนัก/', text2: 'ส่วนสูง/BMI', title: 'บันทึกน้ำหนักส่วนสูง', icon: svgIcons.heightWeight } 
+            ] },
+            { id: 'savingMenu', title: 'การออมเงิน', icon: '<i class="fas fa-piggy-bank text-pink-500"></i>', subMenus: [ { id: 'saving', text1: 'บันทึก', text2: 'การออมเงิน', title: 'บันทึกการออมเงินรายวัน', icon: svgIcons.saving } ] }
+        ];
+        
+        let currentMainId = 'homeMenu';
+        let currentSubMenu = menuStructure[0].subMenus[0];
+        let currentMonthStr = '';
+        
+        window.editStudent = function(id) { openStudentModal(id); };
+
+        window.onload = function() {
+            try {
+                if (!localStorage.getItem('students')) localStorage.setItem('students', JSON.stringify([]));
+                if (!localStorage.getItem('attendanceHistory')) localStorage.setItem('attendanceHistory', JSON.stringify({}));
+                if (!localStorage.getItem('appSettings')) localStorage.setItem('appSettings', JSON.stringify({ teacherName: '', principalName: '', holidays: [] }));
+            } catch(e) { console.error(e); }
+            
+            const today = new Date();
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, '0');
+            document.getElementById('datePicker').value = y + '-' + m + '-' + d;
+            currentMonthStr = y + '-' + m;
+
+            loadLogo();
+            renderSidebar();
+            switchMainMenu('homeMenu'); 
+        };
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (window.innerWidth >= 1024) { 
+                sidebar.classList.toggle('sidebar-collapsed'); 
+            } else { 
+                sidebar.classList.toggle('-translate-x-full'); 
+                overlay.classList.toggle('hidden'); 
+            }
+        }
+
+        function renderSidebar() {
+            let html = '';
+            for(let i=0; i<menuStructure.length; i++) {
+                let main = menuStructure[i];
+                let bgClass = (currentMainId === main.id) ? 'bg-blue-600 text-white shadow-md' : 'text-gray-700 lg:hover:bg-gray-100 active:bg-gray-100';
+                html += '<button type="button" onclick="switchMainMenu(\'' + main.id + '\')" class="w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl mb-2 text-base md:text-sm font-medium transition-colors ' + bgClass + '"><span class="text-xl w-6 text-center">' + main.icon + '</span><span class="text-left leading-tight">' + main.title + '</span></button>';
+            }
+            document.getElementById('sidebarMenu').innerHTML = html;
+        }
+
+        function switchMainMenu(mainId) {
+            currentMainId = mainId;
+            renderSidebar();
+            let mainObj = null;
+            for(let i=0; i<menuStructure.length; i++) { if(menuStructure[i].id === mainId) { mainObj = menuStructure[i]; break; } }
+            if(mainObj && mainObj.subMenus.length > 0) switchSubMenu(mainObj.subMenus[0].id, true);
+        }
+
+        function renderTopNav() {
+            let mainObj = null;
+            for(let i=0; i<menuStructure.length; i++) { if(menuStructure[i].id === currentMainId) { mainObj = menuStructure[i]; break; } }
+            let html = '';
+            for(let j=0; j<mainObj.subMenus.length; j++) {
+                let sub = mainObj.subMenus[j];
+                let activeClass = (currentSubMenu.id === sub.id) ? 'tab-active' : 'tab-inactive';
+                html += '<button type="button" onclick="switchSubMenu(\'' + sub.id + '\', false)" class="px-4 md:px-5 py-3.5 md:py-3 text-sm flex flex-col items-center justify-center transition-colors min-w-[110px] md:min-w-[120px] ' + activeClass + '">' + sub.icon + '<span class="leading-snug text-center w-full px-1 menu-text">' + sub.text1 + '<br>' + sub.text2 + '</span></button>';
+            }
+            document.getElementById('topNav').innerHTML = html;
+        }
+
+        function switchSubMenu(subId, fromMainMenu = false) {
+            let mainObj = null;
+            for(let i=0; i<menuStructure.length; i++) { if(menuStructure[i].id === currentMainId) { mainObj = menuStructure[i]; break; } }
+            for(let j=0; j<mainObj.subMenus.length; j++) { if(mainObj.subMenus[j].id === subId) { currentSubMenu = mainObj.subMenus[j]; break; } }
+            
+            document.getElementById('contentTitle').innerText = currentSubMenu.title;
+            document.getElementById('contentIcon').innerHTML = currentSubMenu.icon.replace('mb-1', 'mr-2');
+            renderTopNav();
+            renderToolbarButtons();
+            loadData();
+
+            if(window.innerWidth < 1024) { 
+                const sidebar = document.getElementById('sidebar'); 
+                if(!sidebar.classList.contains('-translate-x-full')) toggleSidebar(); 
+            }
+        }
+
+        function changeMonth(val) {
+            currentMonthStr = val;
+            let isMonthly = (currentSubMenu.id === 'healthCheck' || currentSubMenu.id === 'heightWeight');
+            if (isMonthly) loadData();
+        }
+
+        function renderToolbarButtons() {
+            const tb = document.getElementById('toolbarButtons');
+            const cId = currentSubMenu.id;
+            const isMonthly = (cId === 'healthCheck' || cId === 'heightWeight');
+            
+            document.getElementById('datePicker').style.display = (cId === 'home' || cId === 'settings' || isMonthly) ? 'none' : 'block';
+            
+            let html = '';
+            
+            if (cId !== 'home' && cId !== 'settings') {
+                html += '<div class="flex items-center space-x-2 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full shadow-sm w-full md:w-auto justify-between md:justify-start"><div class="flex items-center"><label class="text-sm text-gray-700 font-medium hidden sm:block mr-2">เดือน (PDF):</label><input type="month" id="monthPicker" value="' + currentMonthStr + '" onchange="changeMonth(this.value)" class="border border-gray-300 rounded-lg bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-400 text-gray-800 font-medium"></div><button type="button" id="btnExportPDF" onclick="showPdfPreview()" class="bg-red-600 active:bg-red-800 hover:bg-red-700 text-white px-5 py-2 md:py-1.5 rounded-full text-sm font-medium shadow-sm flex items-center transition-colors"><i class="fas fa-file-pdf mr-1.5"></i> ส่งออก PDF</button></div>';
+            }
+
+            if (cId === 'attendance') {
+                html += '<button type="button" onclick="checkAllPresent()" class="bg-blue-600 active:bg-blue-800 hover:bg-blue-700 text-white px-5 py-2 rounded-full shadow-sm text-sm font-medium flex items-center transition-colors"><i class="fas fa-check-double mr-1.5"></i> มาเรียนทุกคน</button>';
+            }
+
+            if (cId !== 'home' && cId !== 'settings') {
+                html += '<button type="button" onclick="saveDailyData()" class="bg-emerald-500 active:bg-emerald-700 hover:bg-emerald-600 text-white px-5 py-2 rounded-full shadow-sm text-sm font-medium flex items-center transition-colors"><i class="fas fa-save mr-1.5"></i> บันทึกข้อมูล</button>';
+            }
+
+            if (cId === 'home') {
+                html += '<label class="bg-[#16a34a] active:bg-green-800 hover:bg-green-700 text-white px-5 py-2.5 rounded-full shadow-sm text-sm font-medium cursor-pointer flex items-center transition-colors"><i class="fas fa-file-import mr-1.5"></i> นำเข้า (CSV) <input type="file" accept=".csv" class="hidden" onchange="importCSV(event)"></label>';
+                html += '<button type="button" onclick="deleteAllStudents()" class="bg-[#dc2626] active:bg-red-800 hover:bg-red-700 text-white px-5 py-2.5 rounded-full shadow-sm text-sm font-medium flex items-center transition-colors"><i class="fas fa-trash-alt mr-1.5"></i> ลบทั้งหมด</button>';
+                html += '<button type="button" onclick="openStudentModal()" class="bg-[#2563eb] active:bg-blue-800 hover:bg-blue-700 text-white px-5 py-2.5 rounded-full shadow-sm text-sm font-medium flex items-center transition-colors"><i class="fas fa-user-plus mr-1.5"></i> เพิ่มนักเรียน</button>';
+            }
+            tb.innerHTML = html;
+        }
+
+        // ==========================================
+        // ฟังก์ชันคำนวณ BMI อิงเกณฑ์เปอร์เซ็นไทล์ CDC (เด็ก ป.3 อายุ 9 ปี)
+        // ==========================================
+        function getBMI(bmi, gender) {
+            if(bmi === "-" || !bmi) return {t:"-", c:"text-gray-500"};
+            let b = parseFloat(bmi);
+            
+            // ค่าเปอร์เซ็นไทล์ 5, 85, 95 ของเด็กอายุ 9 ปี (CDC 2000)
+            let p5 = (gender === 'หญิง') ? 13.9 : 14.0;
+            let p85 = (gender === 'หญิง') ? 19.3 : 18.8;
+            let p95 = (gender === 'หญิง') ? 22.3 : 21.2;
+
+            if (b < p5) return { t: "ผอม", c: "text-blue-500" };
+            if (b >= p5 && b <= p85) return { t: "ปกติ (สมส่วน)", c: "text-green-600" };
+            if (b > p85 && b <= p95) return { t: "ท้วม", c: "text-orange-500" };
+            if (b > p95) return { t: "อ้วน", c: "text-red-600" };
+            
+            return { t: "-", c: "text-gray-500" };
+        }
+
+        function calTotSav(id, his) {
+            let t = 0;
+            for(let d in his) { 
+                if (d.length > 7) { 
+                    let arr = his[d];
+                    if(arr) { let r = arr.find(x => x.id === id); if(r && r.saving) t += parseFloat(r.saving); }
+                }
+            }
+            return t;
+        }
+
+        function loadData() { renderTable(); }
+
+        function renderTable() {
+            const tbody = document.getElementById('studentTableBody');
+            const thead = document.getElementById('tableHeader');
+            const tfoot = document.getElementById('tableFooter');
+            tfoot.classList.add('hidden'); tfoot.innerHTML = '';
+            
+            if (currentSubMenu.id === 'settings') {
+                thead.innerHTML = '';
+                let settings = { teacherName: '', principalName: '', holidays: [] };
+                try { let s = localStorage.getItem('appSettings'); if(s) settings = JSON.parse(s); } catch(e){}
+                if(!settings.holidays) settings.holidays = [];
+                
+                let hListHtml = '';
+                for(let i=0; i<settings.holidays.length; i++){
+                    let h = settings.holidays[i];
+                    hListHtml += '<div class="flex justify-between items-center bg-gray-50 border rounded-lg px-4 py-3 text-sm md:text-base"><span><i class="fas fa-calendar-day text-red-500 mr-2"></i> ' + h.date + ' <span class="mx-2 text-gray-400">|</span> <b>' + h.name + '</b></span><button type="button" onclick="delHoliday(\'' + h.date + '\')" class="text-red-500 hover:text-red-700 active:bg-red-200 bg-red-50 px-3 py-1.5 rounded-lg transition-colors"><i class="fas fa-trash-alt"></i></button></div>';
+                }
+                
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 md:p-6 bg-white"><div class="max-w-2xl mx-auto space-y-6"><div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 md:p-6"><h3 class="text-lg font-bold text-blue-900 mb-4 border-b pb-2"><i class="fas fa-pen-nib mr-2 text-blue-500"></i>ชื่อผู้ลงนาม (ในรายงาน PDF)</h3><div class="space-y-4"><div><label class="block text-sm text-gray-700 mb-1">ครูประจำชั้น</label><input type="text" id="settingTeacher" value="' + (settings.teacherName||'') + '" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-base"></div><div><label class="block text-sm text-gray-700 mb-1">ผู้อำนวยการ</label><input type="text" id="settingPrincipal" value="' + (settings.principalName||'') + '" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-base"></div><div class="text-right"><button type="button" onclick="saveSettings()" class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-sm w-full md:w-auto">บันทึกชื่อ</button></div></div></div><div class="bg-white border border-red-200 rounded-xl shadow-sm p-4 md:p-6"><h3 class="text-lg font-bold text-red-700 mb-4 border-b border-red-100 pb-2"><i class="fas fa-calendar-times mr-2"></i>กำหนดวันหยุดพิเศษ (แสดงสีแดงใน PDF)</h3><div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mb-4"><input type="date" id="holidayDate" class="border border-gray-300 rounded-lg px-4 py-2.5 outline-none w-full sm:w-1/3 text-base focus:border-blue-500"><input type="text" id="holidayName" placeholder="ชื่อวันหยุด (เช่น วันแม่แห่งชาติ)" class="border border-gray-300 rounded-lg px-4 py-2.5 outline-none w-full sm:w-2/3 text-base focus:border-blue-500"><button type="button" onclick="addHoliday()" class="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium shadow-sm w-full sm:w-auto">เพิ่ม</button></div><div class="space-y-2 max-h-48 overflow-y-auto pr-2">' + (hListHtml || '<div class="text-center text-gray-400 text-sm py-4">ยังไม่มีการเพิ่มวันหยุดพิเศษ</div>') + '</div></div></div></td></tr>';
+                return;
+            }
+
+            let students = [];
+            try { let st = localStorage.getItem('students'); if(st) students = JSON.parse(st); } catch(e){}
+            
+            const isMonthly = (currentSubMenu.id === 'healthCheck' || currentSubMenu.id === 'heightWeight');
+            const dateStr = isMonthly ? (currentMonthStr + '-01') : document.getElementById('datePicker').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            
+            if (search) {
+                let filtered = [];
+                for(let i=0; i<students.length; i++) {
+                    if(students[i].name.toLowerCase().indexOf(search) > -1 || String(students[i].code).indexOf(search) > -1) filtered.push(students[i]);
+                }
+                students = filtered;
+            }
+
+            if (students.length === 0) {
+                thead.innerHTML = '<tr><th class="px-4 py-3 text-center text-gray-500">สถานะข้อมูล</th></tr>';
+                tbody.innerHTML = '<tr><td class="px-4 py-16 text-center text-gray-500 bg-white"><i class="fas fa-folder-open text-5xl mb-4 text-gray-200 block"></i>ไม่พบข้อมูลนักเรียน หรือ ไม่มีข้อมูลที่ค้นหา</td></tr>';
+                return;
+            }
+
+            let history = {};
+            try { let hi = localStorage.getItem('attendanceHistory'); if(hi) history = JSON.parse(hi); } catch(e){}
+            
+            if (!history[dateStr]) {
+                let initialData = [];
+                for(let i=0; i<students.length; i++){ initialData.push({ id: students[i].id, status: '', clean: false, line: false, milk: false, lunch: false, teeth: false, weight: '', height: '', saving: '', hc_clothes: false, hc_shoes: false, hc_hair: false, hc_eyes: false, hc_nose: false, hc_ears: false, hc_mouth: false, hc_hands: false, hc_feet: false, hc_skin: false }); }
+                history[dateStr] = initialData;
+                localStorage.setItem('attendanceHistory', JSON.stringify(history));
+            }
+            let todayData = history[dateStr];
+
+            if (currentSubMenu.id === 'home') {
+                thead.innerHTML = '<th class="px-4 py-3.5 text-center w-16 text-blue-800 whitespace-nowrap">เลขที่</th><th class="px-4 py-3.5 text-center w-24 text-blue-800 whitespace-nowrap">รหัส</th><th class="px-4 py-3.5 text-blue-800 whitespace-nowrap">ชื่อ-นามสกุล (กดเพื่อแก้ไข)</th><th class="px-4 py-3.5 text-center w-20 text-blue-800 whitespace-nowrap">เพศ</th><th class="px-4 py-3.5 text-center w-32 text-blue-800 whitespace-nowrap">จัดการ</th>';
+            } else if (currentSubMenu.id === 'attendance') {
+                thead.innerHTML = '<th class="px-4 py-3.5 text-center w-16 text-blue-800 whitespace-nowrap">เลขที่</th><th class="px-4 py-3.5 text-blue-800 whitespace-nowrap">ชื่อ-นามสกุล</th><th class="px-4 py-3.5 text-center w-48 text-blue-800 whitespace-nowrap">สถานะการมาเรียน</th>';
+            } else if (currentSubMenu.id === 'heightWeight') {
+                thead.innerHTML = '<th class="px-4 py-3.5 text-center w-16 text-blue-800 whitespace-nowrap">เลขที่</th><th class="px-4 py-3.5 text-blue-800 min-w-[180px] whitespace-nowrap">ชื่อ-นามสกุล</th><th class="px-4 py-3.5 text-center w-28 text-blue-800 whitespace-nowrap">น้ำหนัก (กก.)</th><th class="px-4 py-3.5 text-center w-28 text-blue-800 whitespace-nowrap">ส่วนสูง (ซม.)</th><th class="px-4 py-3.5 text-center w-24 text-blue-800 whitespace-nowrap">BMI</th><th class="px-4 py-3.5 text-center w-32 text-blue-800 whitespace-nowrap">เกณฑ์</th>';
+            } else if (currentSubMenu.id === 'saving') {
+                thead.innerHTML = '<th class="px-4 py-3.5 text-center w-16 text-blue-800 whitespace-nowrap">เลขที่</th><th class="px-4 py-3.5 text-blue-800 min-w-[180px] whitespace-nowrap">ชื่อ-นามสกุล</th><th class="px-4 py-3.5 text-center w-40 text-blue-800 whitespace-nowrap">ออมวันนี้ (บาท)</th><th class="px-4 py-3.5 text-center w-40 text-blue-800 bg-blue-100 whitespace-nowrap">ยอดสะสมรวม (บาท)</th>';
+            } else if (currentSubMenu.id === 'healthCheck') {
+                let hStr = '<th class="px-2 py-3.5 text-center text-blue-800 w-12 whitespace-nowrap">เลขที่</th><th class="px-2 py-3.5 text-blue-800 min-w-[150px] whitespace-nowrap">ชื่อ-สกุล</th>';
+                let hf = ['เสื้อผ้า','รองเท้า','ผม','ตา','จมูก','หู','ฟัน','มือ','เท้า','ผิวหนัง'];
+                for(let i=0; i<hf.length; i++){ hStr += '<th class="px-1 py-3.5 text-center text-blue-800 text-xs md:text-sm whitespace-nowrap">' + hf[i] + '</th>'; }
+                hStr += '<th class="px-2 py-3.5 text-center text-blue-800 w-24 whitespace-nowrap"><button type="button" onclick="passHealthAll()" class="bg-green-500 hover:bg-green-600 active:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm">ผ่านทุกคน</button></th>';
+                thead.innerHTML = hStr;
+            } else {
+                thead.innerHTML = '<th class="px-4 py-3.5 text-center w-16 text-blue-800 whitespace-nowrap">เลขที่</th><th class="px-4 py-3.5 text-blue-800 whitespace-nowrap">ชื่อ-นามสกุล</th><th class="px-4 py-3.5 text-center w-32 text-blue-800 whitespace-nowrap">ผลการปฏิบัติ</th>';
+            }
+
+            let classTotalSaving = 0;
+            let rowsHtml = '';
+
+            for(let i=0; i<students.length; i++) {
+                let student = students[i];
+                let sData = null;
+                for(let k=0; k<todayData.length; k++){ if(todayData[k].id === student.id) { sData = todayData[k]; break; } }
+                if (!sData) {
+                    sData = { id: student.id, status: '', clean: false, line: false, milk: false, lunch: false, teeth: false, hc_clothes: false, hc_shoes: false, hc_hair: false, hc_eyes: false, hc_nose: false, hc_ears: false, hc_mouth: false, hc_hands: false, hc_feet: false, hc_skin: false, weight: '', height: '', saving: '' };
+                    todayData.push(sData); localStorage.setItem('attendanceHistory', JSON.stringify(history));
+                }
+
+                let rowHTML = '<tr class="hover:bg-blue-50/40 transition-colors"><td class="px-4 py-3 text-center font-medium text-gray-700 whitespace-nowrap">' + student.no + '</td>';
+                
+                if (currentSubMenu.id === 'home') {
+                    rowHTML += '<td class="px-4 py-3 text-center text-gray-600 whitespace-nowrap">' + student.code + '</td><td class="px-4 py-3 text-blue-700 cursor-pointer hover:underline font-semibold whitespace-nowrap" onclick="editStudent(' + student.id + ')">' + student.name + '</td><td class="px-4 py-3 text-center text-gray-600 whitespace-nowrap">' + student.gender + '</td><td class="px-4 py-3 text-center whitespace-nowrap"><button type="button" onclick="editStudent(' + student.id + ')" class="text-blue-500 hover:text-blue-700 active:bg-blue-200 bg-blue-50 border border-blue-100 px-4 py-2 rounded-lg mr-1 text-sm"><i class="fas fa-edit"></i></button><button type="button" onclick="deleteStudent(' + student.id + ')" class="text-red-500 hover:text-red-700 active:bg-red-200 bg-red-50 border border-red-100 px-4 py-2 rounded-lg text-sm"><i class="fas fa-trash-alt"></i></button></td>';
+                } else if (currentSubMenu.id === 'attendance') {
+                    let selM = (sData.status === 'มาเรียน') ? 'selected' : '';
+                    let selK = (sData.status === 'ขาด') ? 'selected' : '';
+                    let selL = (sData.status === 'ลา') ? 'selected' : '';
+                    let selP = (sData.status === 'ป่วย') ? 'selected' : '';
+                    let bgC = (sData.status === 'มาเรียน') ? 'bg-green-50 text-green-700 border-green-300' : (sData.status === 'ขาด') ? 'bg-red-50 text-red-700 border-red-300' : (sData.status === 'ลา') ? 'bg-orange-50 text-orange-700 border-orange-300' : (sData.status === 'ป่วย') ? 'bg-yellow-50 text-yellow-700 border-yellow-300' : '';
+                    rowHTML += '<td class="px-4 py-3 font-medium whitespace-nowrap">' + student.name + '</td><td class="px-4 py-3 text-center whitespace-nowrap"><select onchange="updateRecord(' + student.id + ', \'status\', this.value)" class="border border-gray-300 rounded-lg px-4 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-blue-400 ' + bgC + '"><option value="" class="text-gray-500">- เลือกสถานะ -</option><option value="มาเรียน" ' + selM + '>มาเรียน</option><option value="ขาด" ' + selK + '>ขาด</option><option value="ลา" ' + selL + '>ลา</option><option value="ป่วย" ' + selP + '>ป่วย</option></select></td>';
+                } else if (currentSubMenu.id === 'heightWeight') {
+                    let w = parseFloat(sData.weight); 
+                    let h = parseFloat(sData.height) / 100;
+                    let bmi = (w > 0 && h > 0) ? (w / (h * h)).toFixed(1) : "-";
+                    let bmiStatus = getBMI(bmi, student.gender);
+                    
+                    rowHTML += '<td class="px-4 py-3 font-medium whitespace-nowrap">' + student.name + '</td><td class="px-4 py-3 text-center whitespace-nowrap"><input type="number" step="0.1" inputmode="decimal" value="' + (sData.weight || '') + '" onblur="updateRecordSilently(' + student.id + ', \'weight\', this.value)" class="w-20 text-center border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 text-sm md:text-sm"></td><td class="px-4 py-3 text-center whitespace-nowrap"><input type="number" step="0.1" inputmode="decimal" value="' + (sData.height || '') + '" onblur="updateRecordSilently(' + student.id + ', \'height\', this.value)" class="w-20 text-center border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 text-sm md:text-sm"></td><td class="px-4 py-3 text-center font-bold text-gray-700 whitespace-nowrap">' + bmi + '</td><td class="px-4 py-3 text-center font-bold whitespace-nowrap ' + bmiStatus.c + '">' + bmiStatus.t + '</td>';
+                } else if (currentSubMenu.id === 'saving') {
+                    let totalSaving = calTotSav(student.id, history); classTotalSaving += totalSaving;
+                    rowHTML += '<td class="px-4 py-3 font-medium whitespace-nowrap">' + student.name + '</td><td class="px-4 py-3 text-center whitespace-nowrap"><input type="number" inputmode="numeric" value="' + (sData.saving || '') + '" onblur="updateRecordSilently(' + student.id + ', \'saving\', this.value)" placeholder="0" class="w-28 text-right border border-gray-300 rounded-lg px-4 py-2 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-200 text-base md:text-sm font-medium"></td><td class="px-4 py-3 text-center font-bold text-green-700 bg-green-50/50 whitespace-nowrap">' + totalSaving.toLocaleString('th-TH') + '</td>';
+                } else if (currentSubMenu.id === 'healthCheck') {
+                    const hFields = ['hc_clothes', 'hc_shoes', 'hc_hair', 'hc_eyes', 'hc_nose', 'hc_ears', 'hc_mouth', 'hc_hands', 'hc_feet', 'hc_skin'];
+                    rowHTML += '<td class="px-2 py-3 font-medium truncate max-w-[120px] md:max-w-[150px] whitespace-nowrap">' + student.name + '</td>';
+                    for(let f=0; f<hFields.length; f++){ let fld = hFields[f]; let chk = sData[fld] ? 'checked' : ''; rowHTML += '<td class="px-1 md:px-2 py-3 text-center whitespace-nowrap"><input type="checkbox" ' + chk + ' onchange="updateRecord(' + student.id + ', \'' + fld + '\', this.checked)" class="health-checkbox"></td>'; }
+                    rowHTML += '<td class="px-2 py-3 text-center whitespace-nowrap"><button type="button" onclick="passHealthStudent(' + student.id + ')" class="bg-green-100 hover:bg-green-200 active:bg-green-300 text-green-700 text-xs px-3 py-1.5 rounded-lg shadow-sm font-medium">ผ่าน</button></td>';
+                } else {
+                    const field = currentSubMenu.id;
+                    let chk = sData[field] ? 'checked' : '';
+                    let tx = sData[field] ? 'ทำแล้ว' : 'ยังไม่ทำ';
+                    let cl = sData[field] ? 'text-blue-700 font-medium' : 'text-gray-500';
+                    rowHTML += '<td class="px-4 py-3 font-medium whitespace-nowrap">' + student.name + '</td><td class="px-4 py-3 text-center whitespace-nowrap"><label class="inline-flex items-center cursor-pointer bg-white border border-gray-200 rounded-xl px-5 py-2 shadow-sm active:bg-gray-100 lg:hover:bg-gray-50 w-full justify-center md:w-auto md:justify-start"><input type="checkbox" ' + chk + ' onchange="updateRecord(' + student.id + ', \'' + field + '\', this.checked)" class="w-5 h-5 md:w-4 md:h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"><span class="ml-3 text-base md:text-sm ' + cl + '">' + tx + '</span></label></td>';
+                }
+                rowsHtml += rowHTML + '</tr>';
+            }
+            
+            tbody.innerHTML = rowsHtml;
+
+            if(currentSubMenu.id === 'saving' && students.length > 0) {
+                tfoot.classList.remove('hidden');
+                tfoot.innerHTML = '<tr><td colspan="3" class="px-4 py-3 text-right whitespace-nowrap text-base">ยอดรวมเงินออมสะสมทั้งห้อง (คลิกปุ่มบันทึกเพื่ออัปเดต) :</td><td class="px-4 py-3 text-center text-lg md:text-xl text-green-700 underline decoration-double whitespace-nowrap">' + classTotalSaving.toLocaleString('th-TH') + ' บาท</td></tr>';
+            }
+        }
+
+        window.openStudentModal = function(id) { 
+            document.getElementById('studentModal').classList.remove('hidden'); 
+            document.getElementById('studentModal').classList.add('flex'); 
+            if (id) { 
+                let st = JSON.parse(localStorage.getItem('students')); let s = null; 
+                for(let i=0; i<st.length; i++){ if(st[i].id === id) { s = st[i]; break; } } 
+                document.getElementById('studentId').value = s.id; 
+                document.getElementById('studentNo').value = s.no; 
+                document.getElementById('studentCode').value = s.code; 
+                document.getElementById('studentName').value = s.name; 
+                document.getElementById('studentGender').value = s.gender || 'ชาย'; 
+            } else { 
+                document.getElementById('studentId').value = ''; 
+                document.getElementById('studentNo').value = ''; 
+                document.getElementById('studentCode').value = '';
+                document.getElementById('studentName').value = '';
+            } 
+        }
+
+        window.closeStudentModal = function() { 
+            document.getElementById('studentModal').classList.add('hidden'); 
+            document.getElementById('studentModal').classList.remove('flex'); 
+        }
+
+        window.saveStudent = function() { 
+            const id = document.getElementById('studentId').value; 
+            const no = parseInt(document.getElementById('studentNo').value); 
+            const code = document.getElementById('studentCode').value; 
+            const name = document.getElementById('studentName').value; 
+            const gender = document.getElementById('studentGender').value; 
+            
+            if(!no || !name) return alert("กรุณากรอกข้อมูลให้ครบ"); 
+            let std = []; 
+            try { let str = localStorage.getItem('students'); if(str) std = JSON.parse(str); } catch(e){} 
+            if (id) { 
+                for(let i=0; i<std.length; i++){ 
+                    if(std[i].id == id) { std[i] = { id: parseInt(id), no: no, code: code, name: name, gender: gender }; break; } 
+                } 
+            } else { 
+                std.push({ id: Date.now(), no: no, code: code, name: name, gender: gender }); 
+            } 
+            std.sort(function(a, b){ return a.no - b.no; }); 
+            localStorage.setItem('students', JSON.stringify(std)); 
+            closeStudentModal(); renderTable(); 
+        }
+
+        window.deleteStudent = function(id) { if (confirm('คุณต้องการลบข้อมูลนักเรียนคนนี้ใช่หรือไม่?')) { let std = JSON.parse(localStorage.getItem('students')); let newStd = []; for(let i=0; i<std.length; i++){ if(std[i].id !== id) newStd.push(std[i]); } localStorage.setItem('students', JSON.stringify(newStd)); renderTable(); } }
+        window.deleteAllStudents = function() { if(confirm('คำเตือน: ต้องการลบข้อมูลรายชื่อทั้งหมดใช่หรือไม่?')) { localStorage.setItem('students', JSON.stringify([])); renderTable(); } }
+        window.importCSV = function(event) { const reader = new FileReader(); reader.onload = function(e) { let std = []; try { let str = localStorage.getItem('students'); if(str) std = JSON.parse(str); } catch(err){} let lines = e.target.result.split('\n'); for(let i=0; i<lines.length; i++){ let c = lines[i].split(',').map(function(x){ return x.trim().replace(/^"|"$/g, ''); }); if (c.length < 2 || isNaN(parseInt(c[0]))) continue; std.push({ id: Date.now() + i, no: parseInt(c[0]), code: c.length >= 4 ? c[1] : (Math.floor(1000 + Math.random() * 9000).toString()), name: c.length >= 4 ? c[2] : c[1], gender: (c.length >= 4 && c[3].indexOf('หญิง') > -1) || (c.length < 4 && (c[1].indexOf('ด.ญ.') > -1 || c[1].indexOf('เด็กหญิง') > -1)) ? 'หญิง' : 'ชาย' }); } std.sort(function(a, b){ return a.no - b.no; }); localStorage.setItem('students', JSON.stringify(std)); renderTable(); }; if(event.target.files[0]) reader.readAsText(event.target.files[0]); event.target.value = ''; }
+        window.handleLogoUpload = function(event) { const reader = new FileReader(); reader.onload = function(e) { document.getElementById('schoolLogo').src = e.target.result; localStorage.setItem('schoolLogo', e.target.result); }; if(event.target.files[0]) reader.readAsDataURL(event.target.files[0]); }
+        window.loadLogo = function() { let logo = localStorage.getItem('schoolLogo'); if(logo) document.getElementById('schoolLogo').src = logo; }
+
+        window.saveSettings = function() {
+            let s = { teacherName: '', principalName: '', holidays: [] };
+            try { let str = localStorage.getItem('appSettings'); if(str) s = JSON.parse(str); } catch(e){}
+            s.teacherName = document.getElementById('settingTeacher').value;
+            s.principalName = document.getElementById('settingPrincipal').value;
+            localStorage.setItem('appSettings', JSON.stringify(s));
+            alert('บันทึกข้อมูลเรียบร้อยแล้ว');
+        }
+
+        window.addHoliday = function() {
+            let d = document.getElementById('holidayDate').value;
+            let n = document.getElementById('holidayName').value;
+            if(!d || !n) return alert('กรุณากรอกวันที่และชื่อวันหยุด');
+            let s = { teacherName: '', principalName: '', holidays: [] };
+            try { let str = localStorage.getItem('appSettings'); if(str) s = JSON.parse(str); } catch(e){}
+            if(!s.holidays) s.holidays = [];
+            let found = false; for(let i=0; i<s.holidays.length; i++){ if(s.holidays[i].date === d) found = true; }
+            if(!found) {
+                s.holidays.push({date: d, name: n});
+                s.holidays.sort(function(a,b){ return a.date.localeCompare(b.date); });
+                localStorage.setItem('appSettings', JSON.stringify(s));
+                renderTable(); document.getElementById('holidayName').value = '';
+            }
+        }
+
+        window.delHoliday = function(d) {
+            let s = { teacherName: '', principalName: '', holidays: [] };
+            try { let str = localStorage.getItem('appSettings'); if(str) s = JSON.parse(str); } catch(e){}
+            if(!s.holidays) s.holidays = [];
+            let newH = []; for(let i=0; i<s.holidays.length; i++){ if(s.holidays[i].date !== d) newH.push(s.holidays[i]); }
+            s.holidays = newH;
+            localStorage.setItem('appSettings', JSON.stringify(s));
+            renderTable();
+        }
+
+        window.updateRecordSilently = function(studentId, field, value) {
+            const isMonthly = (currentSubMenu.id === 'healthCheck' || currentSubMenu.id === 'heightWeight');
+            const dateStr = isMonthly ? (currentMonthStr + '-01') : document.getElementById('datePicker').value;
+            let history = {};
+            try { let str = localStorage.getItem('attendanceHistory'); if(str) history = JSON.parse(str); } catch(e){}
+            if(!history[dateStr]) history[dateStr] = [];
+            let record = null;
+            for(let i=0; i<history[dateStr].length; i++){ if(history[dateStr][i].id === studentId) { record = history[dateStr][i]; break; } }
+            if (record) {
+                record[field] = value;
+                localStorage.setItem('attendanceHistory', JSON.stringify(history));
+            }
+        }
+
+        window.updateRecord = function(studentId, field, value) {
+            const isMonthly = (currentSubMenu.id === 'healthCheck' || currentSubMenu.id === 'heightWeight');
+            const dateStr = isMonthly ? (currentMonthStr + '-01') : document.getElementById('datePicker').value;
+            
+            let history = {};
+            try { let str = localStorage.getItem('attendanceHistory'); if(str) history = JSON.parse(str); } catch(e){}
+            if(!history[dateStr]) history[dateStr] = [];
+            
+            let record = null;
+            for(let i=0; i<history[dateStr].length; i++){ if(history[dateStr][i].id === studentId) { record = history[dateStr][i]; break; } }
+            
+            if (record) {
+                record[field] = value;
+                if (field === 'status' && value === 'มาเรียน') { record.clean = record.line = record.milk = record.lunch = record.teeth = true; }
+                else if (field === 'status' && (value === 'ขาด' || value === 'ลา' || value === 'ป่วย')) { record.clean = record.line = record.milk = record.lunch = record.teeth = false; }
+                localStorage.setItem('attendanceHistory', JSON.stringify(history));
+                
+                if (field === 'status') {
+                    renderTable();
+                } else if(typeof value === 'boolean' && currentSubMenu.id !== 'healthCheck') { 
+                    const span = event.target.nextElementSibling; 
+                    span.innerText = value ? 'ทำแล้ว' : 'ยังไม่ทำ'; 
+                    span.className = 'ml-3 text-base md:text-sm font-medium ' + (value ? 'text-blue-700' : 'text-gray-500'); 
+                }
+            }
+        }
+
+        window.saveDailyData = function() {
+            renderTable(); 
+            const isMonthly = (currentSubMenu.id === 'healthCheck' || currentSubMenu.id === 'heightWeight');
+            if(isMonthly) {
+                const parts = currentMonthStr.split('-');
+                if(parts.length===2) alert('บันทึกข้อมูลเดือน ' + parts[1] + '/' + (parseInt(parts[0])+543) + ' เรียบร้อยแล้ว!');
+            } else {
+                const parts = document.getElementById('datePicker').value.split('-');
+                if(parts.length===3) alert('บันทึกข้อมูลวันที่ ' + parts[2] + '/' + parts[1] + '/' + (parseInt(parts[0])+543) + ' เรียบร้อยแล้ว!');
+            }
+        }
+
+        window.checkAllPresent = function() {
+            if(!confirm('ยืนยันเช็ก "มาเรียน" ให้ทุกคนใช่หรือไม่?')) return;
+            const dateStr = document.getElementById('datePicker').value;
+            let history = {};
+            try { let str = localStorage.getItem('attendanceHistory'); if(str) history = JSON.parse(str); } catch(e){}
+            if(!history[dateStr]) history[dateStr] = [];
+            
+            let students = [];
+            try { let st = localStorage.getItem('students'); if(st) students = JSON.parse(st); } catch(e){}
+            
+            for(let i=0; i<students.length; i++){
+                let s = students[i];
+                let r = null;
+                for(let j=0; j<history[dateStr].length; j++){ if(history[dateStr][j].id === s.id) { r = history[dateStr][j]; break; } }
+                if (r) { r.status = 'มาเรียน'; r.clean = r.line = r.milk = r.lunch = r.teeth = true; }
+            }
+            localStorage.setItem('attendanceHistory', JSON.stringify(history)); renderTable();
+        }
+
+        window.passHealthStudent = function(studentId) {
+            const dateStr = currentMonthStr + '-01';
+            let history = {};
+            try { let str = localStorage.getItem('attendanceHistory'); if(str) history = JSON.parse(str); } catch(e){}
+            if(!history[dateStr]) history[dateStr] = [];
+            
+            let record = null;
+            for(let i=0; i<history[dateStr].length; i++){ if(history[dateStr][i].id === studentId) { record = history[dateStr][i]; break; } }
+            if (record) {
+                let hf = ['hc_clothes','hc_shoes','hc_hair','hc_eyes','hc_nose','hc_ears','hc_mouth','hc_hands','hc_feet','hc_skin'];
+                for(let j=0; j<hf.length; j++) record[hf[j]] = true;
+                localStorage.setItem('attendanceHistory', JSON.stringify(history)); renderTable();
+            }
+        }
+
+        window.passHealthAll = function() {
+            if(!confirm('ยืนยันให้ผ่านทุกคนในเดือนนี้?')) return;
+            const dateStr = currentMonthStr + '-01';
+            let history = {};
+            try { let str = localStorage.getItem('attendanceHistory'); if(str) history = JSON.parse(str); } catch(e){}
+            if(!history[dateStr]) history[dateStr] = [];
+            
+            let students = [];
+            try { let st = localStorage.getItem('students'); if(st) students = JSON.parse(st); } catch(e){}
+            
+            let hf = ['hc_clothes','hc_shoes','hc_hair','hc_eyes','hc_nose','hc_ears','hc_mouth','hc_hands','hc_feet','hc_skin'];
+            for(let i=0; i<students.length; i++){
+                let s = students[i];
+                let r = null;
+                for(let j=0; j<history[dateStr].length; j++){ if(history[dateStr][j].id === s.id) { r = history[dateStr][j]; break; } }
+                if (r) { for(let k=0; k<hf.length; k++) r[hf[k]] = true; }
+            }
+            localStorage.setItem('attendanceHistory', JSON.stringify(history)); renderTable();
+        }
+
+        // ==========================================
+        // ฟังก์ชันสร้างตัวหนังสือแนวตั้งเป็นรูปภาพ
+        // ==========================================
+        window.createVerticalImg = function(text, color) {
+            var canvas = document.createElement('canvas');
+            canvas.width = 30;
+            canvas.height = 120;
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.font = "bold 14px 'Sarabun', 'Prompt', sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.translate(15, 60);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText(text, 0, 0);
+            return canvas.toDataURL('image/png');
+        };
+
+        // ==========================================
+        // ระบบ PDF: โชว์หน้าตัวอย่างใน Modal (แก้การเว้นระยะส่วนผู้ลงนาม และ ข้อความขาดลาสีแดง)
+        // ==========================================
+        window.showPdfPreview = function() {
+            let students = [];
+            try { let st = localStorage.getItem('students'); if(st) students = JSON.parse(st); } catch(e){}
+            let history = {};
+            try { let str = localStorage.getItem('attendanceHistory'); if(str) history = JSON.parse(str); } catch(e){}
+            let settings = { teacherName: '', principalName: '', holidays: [] };
+            try { let s = localStorage.getItem('appSettings'); if(s) settings = JSON.parse(s); } catch(e){}
+            if(!settings.holidays) settings.holidays = [];
+
+            if (students.length === 0) return alert("ไม่มีข้อมูลที่จะส่งออก");
+            if(!currentMonthStr) return alert("กรุณาเลือกเดือน");
+
+            const btn = document.getElementById('btnExportPDF');
+            if(btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> กำลังโหลด...'; btn.disabled = true; }
+
+            document.getElementById('pdfPreviewModal').classList.remove('hidden');
+            document.getElementById('pdfPreviewModal').classList.add('flex');
+            document.getElementById('pdfPreviewContent').innerHTML = '<div class="text-center p-10"><i class="fas fa-spinner fa-spin text-4xl text-blue-500 mb-4"></i><p>กำลังเตรียมหน้ากระดาษ...</p></div>';
+
+            setTimeout(function() {
+                const parts = currentMonthStr.split('-');
+                const year = parseInt(parts[0]); const month = parseInt(parts[1]);
+                const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+                const headerMonth = 'ประจำเดือน ' + thaiMonths[month - 1] + ' พ.ศ. ' + (year + 543);
+                
+                const tName = settings.teacherName || '........................................................';
+                const pName = settings.principalName || '........................................................';
+                const cHol = settings.holidays;
+                
+                let classTotalSaving = 0;
+                const isGrid = (currentSubMenu.id === 'attendance' || currentSubMenu.id === 'clean' || currentSubMenu.id === 'line' || currentSubMenu.id === 'milk' || currentSubMenu.id === 'lunch' || currentSubMenu.id === 'teeth' || currentSubMenu.id === 'saving');
+                
+                const pdfPaper = document.getElementById('pdfPreviewContent');
+                pdfPaper.style.width = isGrid ? '280mm' : '190mm';
+                pdfPaper.style.minHeight = isGrid ? '190mm' : '280mm';
+                
+                let innerHTML = '<div style="padding: 5px;">'; // ลด Padding กรอบนอก
+                innerHTML += '<h2 style="text-align: center; color: #000; margin: 0; font-size: 18px; font-weight: bold;">โรงเรียนมะค่าสามัคคี</h2>'; // ลดขนาดฟอนต์ 24px -> 18px
+                innerHTML += '<h3 style="text-align: center; margin: 2px 0; font-size: 16px; font-weight: bold;">รายงานสรุป ' + currentSubMenu.title + '</h3>';
+                innerHTML += '<p style="text-align: center; margin: 0 0 5px 0; font-size: 14px; color: #000;">' + headerMonth + '</p>';
+                innerHTML += '<table class="print-table" style="font-size: ' + (isGrid ? '10px' : '14px') + ';"><thead><tr>'; // ลดฟอนต์ตาราง
+                innerHTML += '<th style="width: ' + (isGrid?'4%':'10%') + ';">เลขที่</th>';
+                innerHTML += '<th>ชื่อ-นามสกุล</th>';
+
+                if (isGrid) {
+                    let daysInMonth = new Date(year, month, 0).getDate();
+                    let colState = [];
+                    for(let d=1; d<=daysInMonth; d++){
+                        let dateStr = year + '-' + String(month).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+                        let dayOfWeek = new Date(year, month-1, d).getDay(); 
+                        let holObj = null;
+                        for(let h=0; h<cHol.length; h++){ if(cHol[h].date === dateStr) { holObj = cHol[h]; break; } }
+                        
+                        if(holObj) { colState[d] = { type: 'holiday', name: holObj.name }; } 
+                        else if (dayOfWeek === 0 || dayOfWeek === 6) { colState[d] = { type: 'weekend', name: 'วันหยุด' }; } 
+                        else { colState[d] = { type: 'workday' }; }
+                        innerHTML += '<th style="width: 2.2%;">' + d + '</th>';
+                    }
+                    
+                    if (currentSubMenu.id === 'attendance') { 
+                        innerHTML += '<th>ม</th><th>ข</th><th>ล</th><th>ป</th></tr></thead><tbody>'; 
+                    } else if (currentSubMenu.id === 'saving') {
+                        innerHTML += '<th style="width: 5%;">ยอดรวม</th><th style="width: 6%;">ยอดสะสม</th></tr></thead><tbody>';
+                    } else { 
+                        innerHTML += '<th>ทำ</th><th>ไม่ทำ</th><th>%</th></tr></thead><tbody>'; 
+                    }
+
+                    for(let i=0; i<students.length; i++){
+                        let stu = students[i];
+                        innerHTML += '<tr><td>' + stu.no + '</td><td style="text-align: left; padding: 2px 4px;">' + stu.name + '</td>';
+                        let stat = { m:0, k:0, l:0, p:0, done:0, totalWrk:0, monthSaving: 0 };
+                        
+                        for(let d=1; d<=daysInMonth; d++){
+                            if (colState[d].type === 'holiday' || colState[d].type === 'weekend') {
+                                if (i === 0) {
+                                    let bgC = colState[d].type === 'holiday' ? '#fecaca' : '#e5e7eb';
+                                    let txC = colState[d].type === 'holiday' ? '#b91c1c' : '#4b5563';
+                                    
+                                    let imgData = createVerticalImg(colState[d].name, txC);
+                                    
+                                    innerHTML += '<td rowspan="' + students.length + '" style="background-color: ' + bgC + '; vertical-align: middle; padding: 0;">';
+                                    // ลดขนาดความสูงภาพจาก 80px -> 60px คืนพื้นที่ให้ลายเซ็นด้านล่าง
+                                    innerHTML += '<img src="' + imgData + '" style="width: 15px; height: 60px; margin: 0 auto; display: block;" /></td>';
+                                }
+                            } else {
+                                stat.totalWrk++;
+                                let dateStr = year + '-' + String(month).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+                                let rec = null;
+                                if(history[dateStr]) { for(let r=0; r<history[dateStr].length; r++){ if(history[dateStr][r].id === stu.id) { rec = history[dateStr][r]; break; } } }
+                                
+                                let val = "";
+                                // ตัวแปรสำหรับเปลี่ยนสีข้อความ ข ล ป เป็นสีแดง
+                                let valColor = "#000";
+                                let valWeight = "normal";
+
+                                if(rec) {
+                                    if(currentSubMenu.id === 'attendance') { 
+                                        if(rec.status==='มาเรียน'){ val="ม"; stat.m++; } 
+                                        else if(rec.status==='ขาด'){ val="ข"; stat.k++; valColor = "#dc2626"; valWeight = "bold"; } 
+                                        else if(rec.status==='ลา'){ val="ล"; stat.l++; valColor = "#dc2626"; valWeight = "bold"; } 
+                                        else if(rec.status==='ป่วย'){ val="ป"; stat.p++; valColor = "#dc2626"; valWeight = "bold"; } 
+                                    } else if (currentSubMenu.id === 'saving') {
+                                        if(rec.saving && parseFloat(rec.saving) > 0) {
+                                            val = parseFloat(rec.saving).toString();
+                                            stat.monthSaving += parseFloat(rec.saving);
+                                        } else { val = "-"; }
+                                    } else { 
+                                        if(rec[currentSubMenu.id]){ val="✓"; stat.done++; } 
+                                    }
+                                }
+                                innerHTML += '<td style="padding: 0; font-size: ' + (isGrid ? '10px' : '14px') + '; color: ' + valColor + '; font-weight: ' + valWeight + ';">' + val + '</td>';
+                            }
+                        }
+                        
+                        if(currentSubMenu.id === 'attendance') { 
+                            innerHTML += '<td>' + stat.m + '</td><td>' + stat.k + '</td><td>' + stat.l + '</td><td>' + stat.p + '</td></tr>'; 
+                        } else if (currentSubMenu.id === 'saving') {
+                            let totalAccumulated = calTotSav(stu.id, history);
+                            classTotalSaving += totalAccumulated;
+                            innerHTML += '<td>' + stat.monthSaving.toLocaleString('th-TH') + '</td><td>' + totalAccumulated.toLocaleString('th-TH') + '</td></tr>';
+                        } else { 
+                            let pct = stat.totalWrk>0 ? ((stat.done/stat.totalWrk)*100).toFixed(0) : "0"; 
+                            innerHTML += '<td>' + stat.done + '</td><td>' + (stat.totalWrk - stat.done) + '</td><td>' + pct + '%</td></tr>'; 
+                        }
+                    }
+
+                } else {
+                    if (currentSubMenu.id === 'heightWeight') { 
+                        innerHTML += '<th style="width: 15%;">น้ำหนัก (กก.)</th><th style="width: 15%;">ส่วนสูง (ซม.)</th><th style="width: 15%;">BMI</th><th style="width: 20%;">เกณฑ์</th></tr></thead><tbody>'; 
+                    }
+                    else if (currentSubMenu.id === 'healthCheck') { 
+                        let hf = ['เสื้อผ้า','รองเท้า','ผม','ตา','จมูก','หู','ฟัน','มือ','เท้า','ผิวหนัง'];
+                        for(let f=0; f<hf.length; f++){ innerHTML += '<th style="font-size: 13px;">' + hf[f] + '</th>'; }
+                        innerHTML += '</tr></thead><tbody>'; 
+                    }
+
+                    for(let i=0; i<students.length; i++){
+                        let stu = students[i];
+                        innerHTML += '<tr><td>' + stu.no + '</td><td style="text-align: left; padding: 2px 4px;">' + stu.name + '</td>';
+                        
+                        let rec = null;
+                        if(history[currentMonthStr + '-01']) {
+                            for(let r=0; r<history[currentMonthStr + '-01'].length; r++) { if(history[currentMonthStr + '-01'][r].id === stu.id) { rec = history[currentMonthStr + '-01'][r]; break; } }
+                        }
+                        
+                        if(currentSubMenu.id === 'heightWeight') { 
+                            let aw = (rec && rec.weight) ? parseFloat(rec.weight).toFixed(1) : "-"; 
+                            let ah = (rec && rec.height) ? parseFloat(rec.height).toFixed(1) : "-";
+                            
+                            let w_num = parseFloat(aw); let h_num = parseFloat(ah) / 100;
+                            let bmi = (aw!=="-"&&ah!=="-") ? (w_num / (h_num * h_num)).toFixed(1) : "-"; 
+                            
+                            let bmis = getBMI(bmi, stu.gender).t;
+                            innerHTML += '<td>' + aw + '</td><td>' + ah + '</td><td>' + bmi + '</td><td>' + bmis + '</td></tr>'; 
+                        }
+                        else if(currentSubMenu.id === 'healthCheck') { 
+                            let hFields = ['hc_clothes', 'hc_shoes', 'hc_hair', 'hc_eyes', 'hc_nose', 'hc_ears', 'hc_mouth', 'hc_hands', 'hc_feet', 'hc_skin'];
+                            for(let f=0; f<hFields.length; f++){ 
+                                innerHTML += '<td style="font-size: 14px; font-weight: bold;">' + ((rec && rec[hFields[f]]) ? '✓' : '✗') + '</td>'; 
+                            }
+                            innerHTML += '</tr>';
+                        }
+                    }
+                }
+                innerHTML += '</tbody></table>';
+                
+                // ลดระยะขอบล่างของหมายเหตุและผู้ลงนามให้ประหยัดพื้นที่กระดาษ
+                if(currentSubMenu.id === 'saving') innerHTML += '<div style="text-align: right; margin-top: 5px; font-size: 12px; font-weight: bold; color: #000;">ยอดรวมเงินออมสะสมทั้งห้อง: ' + classTotalSaving.toLocaleString('th-TH') + ' บาท</div>';
+                
+                if(currentSubMenu.id === 'healthCheck') innerHTML += '<div style="text-align: left; margin-top: 5px; font-size: 11px; color: #000;">หมายเหตุ: ✓ = ผ่านเกณฑ์มาตรฐาน, ✗ = ไม่ผ่านเกณฑ์ / ควรปรับปรุง</div>';
+                if(isGrid) innerHTML += '<div style="text-align: left; margin-top: 5px; font-size: 11px; color: #dc2626;">หมายเหตุ: คอลัมน์สีแดง คือ วันหยุดพิเศษ | คอลัมน์สีเทา คือ วันเสาร์-อาทิตย์</div>';
+                
+                innerHTML += '<table style="width: 100%; border: none; margin-top: 10px; font-size: 12px; color: #000;"><tr style="border: none;"><td style="border: none; text-align: center; width: 50%; vertical-align: bottom;">ลงชื่อ........................................................<br>(' + tName + ')<br>ครูประจำชั้น</td><td style="border: none; text-align: center; width: 50%; vertical-align: bottom;">ลงชื่อ........................................................<br>(' + pName + ')<br>ผู้อำนวยการโรงเรียนมะค่าสามัคคี</td></tr></table>';
+                innerHTML += '</div>';
+
+                document.getElementById('pdfPreviewContent').innerHTML = innerHTML;
+
+                if(btn) { btn.innerHTML = '<i class="fas fa-file-pdf mr-1.5"></i> ส่งออก PDF'; btn.disabled = false; }
+
+            }, 500);
+        }
+
+        window.closePdfPreview = function() {
+            document.getElementById('pdfPreviewModal').classList.add('hidden');
+            document.getElementById('pdfPreviewModal').classList.remove('flex');
+        }
+
+        // ==========================================
+        // ระบบบันทึก PDF จริงลงเครื่อง 
+        // ==========================================
+        window.downloadActualPDF = function() {
+            const btn = document.getElementById('btnDownloadActualPdf');
+            const origText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> กำลังบันทึก...';
+            btn.disabled = true;
+
+            const element = document.getElementById('pdfPreviewContent');
+            const isGrid = (currentSubMenu.id === 'attendance' || currentSubMenu.id === 'clean' || currentSubMenu.id === 'line' || currentSubMenu.id === 'milk' || currentSubMenu.id === 'lunch' || currentSubMenu.id === 'teeth' || currentSubMenu.id === 'saving');
+            
+            const parts = currentMonthStr.split('-');
+            const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+            const fileName = 'รายงานสรุป_' + currentSubMenu.title + '_' + thaiMonths[parseInt(parts[1]) - 1] + (parseInt(parts[0]) + 543) + '.pdf';
+
+            // ใช้สเกล = 2 เพื่อความคมชัด
+            var opt = { 
+                margin: 10, 
+                filename: fileName, 
+                image: { type: 'jpeg', quality: 0.98 }, 
+                html2canvas: { scale: 2, useCORS: true, logging: false }, 
+                jsPDF: { unit: 'mm', format: 'a4', orientation: isGrid ? 'landscape' : 'portrait' } 
+            };
+
+            html2pdf().set(opt).from(element).save().then(function() {
+                btn.innerHTML = origText;
+                btn.disabled = false;
+            }).catch(function(err){
+                btn.innerHTML = origText;
+                btn.disabled = false;
+                alert("เกิดข้อผิดพลาดในการบันทึก PDF ลองรีเฟรชหน้าจอแล้วทำใหม่ครับ");
+            });
+        }
+    </script>
+</body>
+</html>
